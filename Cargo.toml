@@ -1,0 +1,30 @@
+[package]
+name = "lis2dh12-spi"
+version = "0.1.0"
+authors = ["David Haig <david@ninjametal.com>"]
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/ninjasource/lis2dw12"
+documentation = "https://docs.rs/lis2dh12-spi"
+description = "A no_std compatible Rust driver for the low power ST 3-Axis MEMS 14-bit accelerometer LIS2DW12 using the SPI bus in async or blocking mode"
+readme = "README.md"
+keywords = ["accelerometer", "sensor", "spi", "lis2dh12", "no_std"]
+categories = ["embedded", "no-std"]
+edition = "2018"
+
+
+[dependencies]
+embedded-hal = "0.2.5"
+accelerometer = "0.12.0"
+num-traits = { version = "0.2.14", default-features = false }
+num-derive = { version = "0.3.3", default-features = false }
+# embassy-traits = { version = "0.0.2", optional = true, features = ["defmt"]}
+#embassy-traits = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy", optional = true, features = ["defmt"]}
+embassy-traits = { path = "../forks/embassy/embassy-traits", features = ["defmt"] }
+nb = { version = "1.0" }
+byteorder = { version = "1.4", default-features = false }
+[patch.crates-io]
+embassy-traits = { path = "../forks/embassy/embassy-traits" }
+
+[profile.release]
+lto = true
+
