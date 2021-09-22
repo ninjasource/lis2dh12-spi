@@ -46,11 +46,61 @@ pub enum Register {
     ACT_DUR = 0x3F,
 }
 
+/// AOI-6D Interrupt mode
+#[derive(Copy, Clone)]
+pub enum Aoi6d {
+    /// OR combination of interrupt events
+    Or = 0b00,
+    /// 6-direction movement recognition
+    Movement6D = 0b01,
+    /// AND combination of interrupt events
+    And = 0b10,
+    /// 6-direction position recognition
+    Position6D = 0b11,
+}
+
+// === INT1_CFG (30h), INT2_CFG (34h) ===
+
+pub const AOI_6D_MASK: u8 = 0b1100_0000;
+
+pub const INT1_CFG_ENABLE_CLICK: u8 = 0b0011_1111;
+
 impl Register {
     pub fn addr(self) -> u8 {
         self as u8
     }
 }
+
+// === CTRL_REG5 (24h) ===
+
+pub const BOOT: u8 = 0b1000_0000;
+pub const FIFO_EN: u8 = 0b0100_0000;
+pub const LIR_INT1: u8 = 0b0000_1000;
+pub const D4D_INT1: u8 = 0b0000_0100;
+pub const LIR_INT2: u8 = 0b0000_0010;
+pub const D4D_INT2: u8 = 0b0000_0001;
+
+// === CTRL_REG6 (25h) ===
+
+pub const I2_CLICK: u8 = 0b1000_0000;
+pub const I2_IA1: u8 = 0b0100_0000;
+pub const I2_IA2: u8 = 0b0010_0000;
+pub const I2_BOOT: u8 = 0b0001_0000;
+pub const I2_ACT: u8 = 0b0000_1000;
+pub const INT_POLARITY: u8 = 0b0000_0010;
+
+// === INT1_THS (32h), INT2_THS (36h) ===
+
+pub const THS_MASK: u8 = 0b0111_1111;
+
+// === CLICK_CFG (38h) ===
+
+pub const ZD: u8 = 0b0010_0000;
+pub const ZS: u8 = 0b0001_0000;
+pub const YD: u8 = 0b0000_1000;
+pub const YS: u8 = 0b0000_0100;
+pub const XD: u8 = 0b0000_0010;
+pub const XS: u8 = 0b0000_0001;
 
 /// Output Data Rate
 #[derive(Copy, Clone)]
@@ -95,6 +145,15 @@ pub const HR: u8 = 0b0000_1000;
 // === TEMP_CFG_REG (1Fh) ===
 
 pub const TEMP_EN: u8 = 0b1100_0000;
+
+// === CTRL_REG3 (22h) ===
+
+pub const I1_CLICK: u8 = 0b1000_0000;
+pub const I1_IA1: u8 = 0b0100_0000;
+pub const I1_IA2: u8 = 0b0010_0000;
+pub const I1_ZYXDA: u8 = 0b0001_0000;
+pub const I1_WTM: u8 = 0b0000_0100;
+pub const I1_OVERRUN: u8 = 0b0000_0010;
 
 // === CTRL_REG4 (23h) ===
 

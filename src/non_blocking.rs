@@ -347,6 +347,96 @@ where
         Ok((value as f32 * 0.25) + 25.0)
     }
 
+    /// Enable interrupt double-click on X,Y,Z axis,
+    /// `CLICK_CFG`: `XD`, `YD`, `ZD`
+    pub async fn enable_double_click(
+        &mut self,
+        (x, y, z): (bool, bool, bool),
+    ) -> Result<(), Error<SpiError, PinError>> {
+        self.modify_reg(Register::CLICK_CFG, |mut v| {
+            v &= !(XD | YD | ZD); // disable all axises
+            v |= if x { XD } else { 0 };
+            v |= if y { YD } else { 0 };
+            v |= if z { ZD } else { 0 };
+            v
+        })
+        .await?;
+        Ok(())
+    }
+
+    /// AOI-6D Interrupt mode,
+    /// `INTx_CFG`: `AOI`, `6D`
+    pub async fn int1_set_mode(&mut self, mode: Aoi6d) -> Result<(), Error<SpiError, PinError>> {
+        self.modify_reg(Register::INT1_CFG, |v| {
+            (v & !AOI_6D_MASK) | ((mode as u8) << 6)
+        })
+        .await?;
+        Ok(())
+    }
+
+    /// AOI-6D Interrupt mode,
+    /// `INTx_CFG`: `AOI`, `6D`
+    pub async fn int1_enable_click(
+        &mut self,
+        enable: bool,
+    ) -> Result<(), Error<SpiError, PinError>> {
+        self.reg_xset_bits(Register::INT1_CFG, INT1_CFG_ENABLE_CLICK, enable)
+            .await?;
+        Ok(())
+    }
+
+    /// `CLICK` interrupt on `INT1` pin,
+    /// `CTRL_REG3`: `I1_CLICK`
+    pub async fn enable_i1_click(&mut self, enable: bool) -> Result<(), Error<SpiError, PinError>> {
+        self.reg_xset_bits(Register::CTRL_REG3, I1_CLICK, enable)
+            .await?;
+        Ok(())
+    }
+
+    /// Latch interrupt request on INT1_SRC (31h),
+    /// with INT1_SRC (31h) register cleared by reading INT1_SRC (31h) itself,
+    /// `CTRL_REG5`: `LIR_INT1`
+    pub async fn enable_lir_int1(&mut self, latch: bool) -> Result<(), Error<SpiError, PinError>> {
+        self.reg_xset_bits(Register::CTRL_REG5, LIR_INT1, latch)
+            .await?;
+        Ok(())
+    }
+
+    /// Enable interrupt single-click on X,Y,Z axis,
+    /// `CLICK_CFG`: `XS`, `YS`, `ZS`
+    pub async fn enable_single_click(
+        &mut self,
+        (x, y, z): (bool, bool, bool),
+    ) -> Result<(), Error<SpiError, PinError>> {
+        self.modify_reg(Register::CLICK_CFG, |mut v| {
+            v &= !(XS | YS | ZS); // disable all axises
+            v |= if x { XS } else { 0 };
+            v |= if y { YS } else { 0 };
+            v |= if z { ZS } else { 0 };
+            v
+        })
+        .await?;
+        Ok(())
+    }
+
+    /// INT1/INT2 pin polarity,
+    /// `CTRL_REG6`: `INT_POLARITY`
+    pub async fn set_int_polarity(
+        &mut self,
+        active_low: bool,
+    ) -> Result<(), Error<SpiError, PinError>> {
+        self.reg_xset_bits(Register::CTRL_REG6, INT_POLARITY, active_low)
+            .await?;
+        Ok(())
+    }
+
+    /// Click threshold,
+    /// `CLICK_THS`: `Ths`
+    pub async fn set_click_ths(&mut self, ths: u8) -> Result<(), Error<SpiError, PinError>> {
+        self.write_reg(Register::CLICK_THS, ths & THS_MASK).await?;
+        Ok(())
+    }
+
     async fn reg_set_bits(
         &mut self,
         reg: Register,
