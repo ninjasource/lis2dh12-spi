@@ -385,6 +385,19 @@ where
         Ok(())
     }
 
+    /// Click time,
+    pub async fn set_click_time(
+        &mut self,
+        limit: u8,
+        latency: u8,
+        window: u8,
+    ) -> Result<(), Error<SpiError, PinError>> {
+        self.write_reg(Register::TIME_LIMIT, limit).await?;
+        self.write_reg(Register::TIME_LATENCY, latency).await?;
+        self.write_reg(Register::TIME_WINDOW, window).await?;
+        Ok(())
+    }
+
     /// `CLICK` interrupt on `INT1` pin,
     /// `CTRL_REG3`: `I1_CLICK`
     pub async fn enable_i1_click(&mut self, enable: bool) -> Result<(), Error<SpiError, PinError>> {
