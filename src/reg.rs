@@ -71,6 +71,10 @@ impl Register {
     }
 }
 
+// === ACT_THS (3Eh) ===
+
+pub const Acth_MASK: u8 = 0b0111_1111;
+
 // === CTRL_REG5 (24h) ===
 
 pub const BOOT: u8 = 0b1000_0000;

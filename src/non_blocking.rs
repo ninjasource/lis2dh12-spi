@@ -5,6 +5,110 @@ use embedded_hal::digital::v2::OutputPin;
 
 pub use accelerometer::{vector::F32x3, Accelerometer};
 
+pub enum ClickSource {
+    Single,
+    Double,
+}
+
+pub enum ClickInterupt {
+    None,
+    Int1(InterruptConfig),
+    Int2(InterruptConfig),
+}
+
+impl Default for ClickInterupt {
+    fn default() -> Self {
+        ClickInterupt::Int1(InterruptConfig::default())
+    }
+}
+
+// See INT_DUR register on lis2dw12 spec
+pub struct ClickTimeInOdrCycles {
+    // the time it takes to for the thing to stop moving below its threshold (20ms) (e.g 20ms => 0.02 * 200hz = 4)
+    pub limit: u8,
+
+    // the minimum time between taps - a typical double click is 100ms-200ms long (e.g 100ms => 0.1 * 200hz = 20)
+    pub latency: u8,
+
+    // cant repeat a double click until at least 500ms has passed (also the maximum time between taps) (e.g 500ms => 0.5 * 200hz = 100)
+    pub window: u8,
+}
+
+fn to_u8_non_zero(val: f64) -> u8 {
+    let x = val as u8;
+    if x == 0 {
+        1
+    } else {
+        x
+    }
+}
+
+impl ClickTimeInOdrCycles {
+    pub fn new(odr: OutputDataRate) -> Self {
+        let factor = match odr {
+            OutputDataRate::PowerDown => 0.0,
+            OutputDataRate::Hz1 => 1.0,
+            OutputDataRate::Hz10 => 10.0,
+            OutputDataRate::Hz25 => 25.0,
+            OutputDataRate::Hz50 => 50.0,
+            OutputDataRate::Hz100 => 100.0,
+            OutputDataRate::Hz200 => 200.0,
+            OutputDataRate::Hz400 => 400.0,
+            OutputDataRate::HighRate0 => 1620.0,
+            OutputDataRate::HighRate1 => 1344.0,
+        };
+
+        // the time it takes to for the thing to stop moving below its threshold (20ms)
+        let limit = to_u8_non_zero(0.02 * factor);
+
+        // the minimum time between taps - a typical double click is 100ms-200ms long (100ms)
+        let latency = to_u8_non_zero(0.1 * factor);
+
+        // cant repeat a double click until at least 500ms has passed (also the maximum time between taps)
+        let window = to_u8_non_zero(0.5 * factor) - latency;
+
+        Self {
+            latency,
+            limit,
+            window,
+        }
+    }
+}
+
+pub struct InterruptConfig {
+    pub active_low: bool,
+    pub latch: bool,
+}
+
+impl Default for InterruptConfig {
+    fn default() -> Self {
+        Self {
+            active_low: true,
+            latch: false,
+        }
+    }
+}
+
+pub struct ClickConfig {
+    pub source: ClickSource,
+    pub interrupt: ClickInterupt,
+    pub xyz_axes_enabled: (bool, bool, bool), // (x, y, z)
+    pub threshold: u8,                        // 0-127 force applied to tap (depends on the scale)
+    pub time: ClickTimeInOdrCycles,
+}
+
+impl Default for ClickConfig {
+    fn default() -> Self {
+        Self {
+            source: ClickSource::Double,
+            interrupt: Default::default(),
+            xyz_axes_enabled: (true, true, true),
+            threshold: 127, //40, //0x7F,
+            time: ClickTimeInOdrCycles::new(OutputDataRate::Hz400),
+        }
+    }
+}
+
 impl<SPI, SpiError, CS, PinError> Lis2dh12<SPI, CS>
 where
     SPI: FullDuplex<u8, Error = SpiError>,
@@ -21,6 +125,20 @@ where
 
     pub async fn get_device_id(&mut self) -> Result<u8, Error<SpiError, PinError>> {
         self.read_reg(Register::WHO_AM_I).await
+    }
+
+    /// Sleep-to-wake, return-to-sleep activation threshold in low-power mode,
+    /// `ACT_THS`: `Acth`
+    pub async fn set_act_ths(&mut self, ths: u8) -> Result<(), Error<SpiError, PinError>> {
+        self.write_reg(Register::ACT_THS, ths & Acth_MASK).await?;
+        Ok(())
+    }
+
+    /// Sleep-to-wake, return-to-sleep duration,
+    /// `ACT_DUR`: `ActD`
+    pub async fn set_act_dur(&mut self, d: u8) -> Result<(), Error<SpiError, PinError>> {
+        self.write_reg(Register::ACT_DUR, d).await?;
+        Ok(())
     }
 
     /// Block data update,
@@ -349,7 +467,41 @@ where
 
     /// Enable interrupt double-click on X,Y,Z axis,
     /// `CLICK_CFG`: `XD`, `YD`, `ZD`
-    pub async fn enable_double_click(
+    pub async fn enable_click(
+        &mut self,
+        config: ClickConfig,
+    ) -> Result<(), Error<SpiError, PinError>> {
+        match config.source {
+            ClickSource::Double => {
+                self.enable_double_click(config.xyz_axes_enabled).await?;
+            }
+            ClickSource::Single => {
+                self.enable_single_click(config.xyz_axes_enabled).await?;
+            }
+        }
+
+        self.set_click_threshold(config.threshold).await?;
+
+        // NOTE: the numbers below depends on the OutputDataRate so changing the ODR affects double click times
+        self.set_click_time(config.time.limit, config.time.latency, config.time.window)
+            .await?;
+
+        match config.interrupt {
+            ClickInterupt::Int1(int_config) => {
+                self.enable_i1_click(true).await?;
+                self.int1_enable_click(true).await?;
+                self.set_int_polarity(int_config.active_low).await?;
+                self.enable_lir_int1(int_config.latch).await?;
+            }
+            _ => {} // do nothing (we don't support int2 yet)
+        }
+
+        Ok(())
+    }
+
+    /// Enable interrupt double-click on X,Y,Z axis,
+    /// `CLICK_CFG`: `XD`, `YD`, `ZD`
+    async fn enable_double_click(
         &mut self,
         (x, y, z): (bool, bool, bool),
     ) -> Result<(), Error<SpiError, PinError>> {
@@ -376,17 +528,14 @@ where
 
     /// AOI-6D Interrupt mode,
     /// `INTx_CFG`: `AOI`, `6D`
-    pub async fn int1_enable_click(
-        &mut self,
-        enable: bool,
-    ) -> Result<(), Error<SpiError, PinError>> {
+    async fn int1_enable_click(&mut self, enable: bool) -> Result<(), Error<SpiError, PinError>> {
         self.reg_xset_bits(Register::INT1_CFG, INT1_CFG_ENABLE_CLICK, enable)
             .await?;
         Ok(())
     }
 
     /// Click time,
-    pub async fn set_click_time(
+    async fn set_click_time(
         &mut self,
         limit: u8,
         latency: u8,
@@ -400,7 +549,7 @@ where
 
     /// `CLICK` interrupt on `INT1` pin,
     /// `CTRL_REG3`: `I1_CLICK`
-    pub async fn enable_i1_click(&mut self, enable: bool) -> Result<(), Error<SpiError, PinError>> {
+    async fn enable_i1_click(&mut self, enable: bool) -> Result<(), Error<SpiError, PinError>> {
         self.reg_xset_bits(Register::CTRL_REG3, I1_CLICK, enable)
             .await?;
         Ok(())
@@ -409,7 +558,7 @@ where
     /// Latch interrupt request on INT1_SRC (31h),
     /// with INT1_SRC (31h) register cleared by reading INT1_SRC (31h) itself,
     /// `CTRL_REG5`: `LIR_INT1`
-    pub async fn enable_lir_int1(&mut self, latch: bool) -> Result<(), Error<SpiError, PinError>> {
+    async fn enable_lir_int1(&mut self, latch: bool) -> Result<(), Error<SpiError, PinError>> {
         self.reg_xset_bits(Register::CTRL_REG5, LIR_INT1, latch)
             .await?;
         Ok(())
@@ -417,7 +566,7 @@ where
 
     /// Enable interrupt single-click on X,Y,Z axis,
     /// `CLICK_CFG`: `XS`, `YS`, `ZS`
-    pub async fn enable_single_click(
+    async fn enable_single_click(
         &mut self,
         (x, y, z): (bool, bool, bool),
     ) -> Result<(), Error<SpiError, PinError>> {
@@ -434,7 +583,7 @@ where
 
     /// INT1/INT2 pin polarity,
     /// `CTRL_REG6`: `INT_POLARITY`
-    pub async fn set_int_polarity(
+    async fn set_int_polarity(
         &mut self,
         active_low: bool,
     ) -> Result<(), Error<SpiError, PinError>> {
@@ -445,7 +594,7 @@ where
 
     /// Click threshold,
     /// `CLICK_THS`: `Ths`
-    pub async fn set_click_ths(&mut self, ths: u8) -> Result<(), Error<SpiError, PinError>> {
+    async fn set_click_threshold(&mut self, ths: u8) -> Result<(), Error<SpiError, PinError>> {
         self.write_reg(Register::CLICK_THS, ths & THS_MASK).await?;
         Ok(())
     }
