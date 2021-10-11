@@ -103,7 +103,7 @@ impl Default for ClickConfig {
             source: ClickSource::Double,
             interrupt: Default::default(),
             xyz_axes_enabled: (true, true, true),
-            threshold: 127, //40, //0x7F,
+            threshold: 128, //40, //0x7F,
             time: ClickTimeInOdrCycles::new(OutputDataRate::Hz400),
         }
     }
